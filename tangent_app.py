@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 
 plt.rcParams['axes.unicode_minus'] = False
 
-st.set_page_config(page_title="Tangent Line Visualizer", layout="centered")
+st.set_page_config(page_title="접선 개수 시각화", layout="centered")
 
-st.title("Tangent lines from (k, 0) to y = (x-1)eˣ")
-st.markdown("$t^2 - (k+1)t + 1 = 0$ — number of real roots = number of tangent lines")
+st.title("점 (k, 0)에서 y = (x−1)eˣ에 그은 접선")
+st.markdown("이차방정식 $t^2 - (k+1)t + 1 = 0$ 의 판별식으로 접선 개수를 확인합니다.")
 
-k = st.slider("k", min_value=-5.0, max_value=3.0, value=2.0, step=0.1)
+k = st.slider("k 값", min_value=-5.0, max_value=3.0, value=2.0, step=0.1)
 
 # 판별식: D = (k+1)^2 - 4
 disc = (k + 1) ** 2 - 4
@@ -24,13 +24,13 @@ elif abs(disc) < 1e-9:
 
 # 접선 개수 표시
 if disc > 1e-9:
-    st.success(f"**2 tangent lines**   (D = {disc:.2f} > 0)")
+    st.success(f"접선 **2개**   (판별식 D = {disc:.2f} > 0)")
 elif abs(disc) < 1e-9:
-    st.warning(f"**1 tangent line** (boundary, double root)   D = 0,  k = {k:.1f}")
+    st.warning(f"접선 **1개** (경계, 중근)   D = 0,  k = {k:.1f}")
 else:
-    st.error(f"**0 tangent lines**   (D = {disc:.2f} < 0)")
+    st.error(f"접선 **0개**   (판별식 D = {disc:.2f} < 0)")
 
-# 그래프
+# 그래프 (내부 텍스트는 영문/수식만 사용)
 fig, ax = plt.subplots(figsize=(8, 6))
 
 x_range = np.linspace(-6, 5, 1000)
@@ -40,7 +40,7 @@ mask = (y_curve >= -3) & (y_curve <= 10)
 ax.plot(x_range[mask], y_curve[mask], color='#185FA5', linewidth=2.5,
         label=r'$y=(x-1)e^x$', zorder=3)
 
-# 경계선 k=-3, k=1
+# 경계선
 for kv, label in [(-3, 'k=-3'), (1, 'k=1')]:
     ax.axvline(x=kv, color='#aaaaaa', linewidth=1, linestyle='--', zorder=1)
     ax.text(kv, 9.3, label, ha='center', fontsize=10, color='#aaaaaa')
@@ -82,24 +82,24 @@ ax.grid(True, color='#eeeeee', linewidth=0.5)
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 ax.legend(loc='upper left', fontsize=11)
-ax.set_title(f'k = {k:.1f}  |  Number of tangent lines: {len(tangents)}', fontsize=13, pad=12)
+ax.set_title(f'k = {k:.1f}  |  Tangent lines: {len(tangents)}', fontsize=13, pad=12)
 
 st.pyplot(fig)
 
 # 풀이 요약
-with st.expander("Solution"):
+with st.expander("풀이 보기"):
     st.markdown(r"""
-**Let the tangent point be $t$:**
+**접점을 $t$로 놓으면:**
 
-$$y' = xe^x \implies \text{slope at } t = te^t$$
+$$y' = xe^x \implies \text{접선의 기울기} = te^t$$
 
-Condition for the tangent to pass through $(k, 0)$:
+접선이 점 $(k, 0)$을 지나는 조건:
 
 $$t^2 - (k+1)t + 1 = 0$$
 
-**2 tangent lines $\Leftrightarrow$ 2 real roots $\Leftrightarrow$ D > 0**
+**접선이 2개 $\Leftrightarrow$ 이 이차방정식의 실근이 2개 $\Leftrightarrow$ 판별식 D > 0**
 
 $$D = (k+1)^2 - 4 > 0$$
 
-$$\therefore \boxed{k < -3 \quad \text{or} \quad k > 1}$$
+$$\therefore \boxed{k < -3 \quad \text{또는} \quad k > 1}$$
 """)
