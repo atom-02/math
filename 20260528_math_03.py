@@ -2,8 +2,7 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 폰트 및 마이너스 기호 설정 (맥 전용 AppleGothic 한글 깨짐 완벽 방지)
-plt.rcParams['font.family'] = 'AppleGothic'
+# 맷플롯립 마이너스 기호 깨짐 방지
 plt.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(page_title="지수·로그함수의 교점과 역함수 대칭 탐구", layout="wide")
@@ -16,7 +15,9 @@ with st.container():
     st.subheader("📝 모의고사 문제 (21번)")
     st.write("실수 $t$에 대하여 두 곡선")
     st.latex(r"y = t - \log_2 x \quad \text{와 } \quad y = 2^{x-t}")
-    st.write("가 만나는 점의 $x$좌표를 $f(t)$라 하자. <보기>의 각 명제에 대하여 다음 규칙에 따라 $A, B, C$의 값을 정할 때, $A+B+C$의 값을 구하시오. (단, $A+B+C \neq 0$)")
+    
+    st.write("가 만나는 점의 $x$좌표를 $f(t)$라 하자. <보기>의 각 명제에 대하여 다음 규칙에 따라 $A, B, C$의 값을 정할 때, $A+B+C$의 값을 구하시오.")
+    st.latex(r"(\text{단, } A+B+C \neq 0)")
 
     col_rule, col_view = st.columns([1, 1.2])
     
@@ -62,33 +63,33 @@ def get_exact_ft(t):
 
 f_t = get_exact_ft(t_val)
 
-# 💡 상단 알림창의 화살표 가독성 완벽 교정
 st.info(f"💡 현재 설정된 값: $t = {t_val:.1f} \\quad \\rightarrow \\quad$ 두 곡선의 교점 $f(t) = {f_t:.3f}$")
 
+# 레이아웃 컬럼 설정
 col1, col2 = st.columns([3, 1])
 
 with col1:
     x_grid = np.linspace(0.05, 5.0, 1000)
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # 그래프 그리기
-    ax.plot(x_grid, log_curve(x_grid, t_val), 'b-', linewidth=2.5, label='y = t - log₂x')
-    ax.plot(x_grid, exp_curve(x_grid, t_val), 'r--', linewidth=2.5, label='y = 2^(x-t)')
-    
-    # 🛠️ [한글 깨짐 해결] 그래프 범례 한글을 완벽하게 출력하도록 보장
-    ax.plot(x_grid, x_grid, 'g:', alpha=0.6, label='y = x (대칭축)')
+    # 🛠️ [범례 교정] 깨지던 한글 괄호 부분을 완전히 삭제하고 군더더기 없는 수식만 남겼습니다.
+    ax.plot(x_grid, log_curve(x_grid, t_val), 'b-', linewidth=2.5, label=r'$y = t - \log_2 x$')
+    ax.plot(x_grid, exp_curve(x_grid, t_val), 'r--', linewidth=2.5, label=r'$y = 2^{x-t}$')
+    ax.plot(x_grid, x_grid, 'g:', alpha=0.6, label=r'$y = x$')
     
     # 교점 (f(t), f(t)) 표시
     ax.plot(f_t, f_t, 'ko', markersize=9, zorder=5)
     ax.text(f_t + 0.1, f_t - 0.25, f'f(t) = {f_t:.3f}', color='black', weight='bold', fontsize=12)
     
     # 가이드 점선 범례 수정
-    ax.axvline(x=t_val, color='gray', linestyle='--', alpha=0.4, label=f'x = t ({t_val:.1f})')
+    ax.axvline(x=t_val, color='gray', linestyle='--', alpha=0.4, label=r'$x = t \text{ (' + f'{t_val:.1f}' + r')}$')
     
     ax.set_xlim(0, 5)
     ax.set_ylim(0, 5)
     ax.set_aspect('equal')
     ax.grid(True, linestyle='--', alpha=0.5)
+    
+    # 수식 폰트 엔진만 사용하므로 그 어떤 시스템 환경에서도 100% 안 깨집니다.
     ax.legend(fontsize=11, loc='upper right')
     ax.set_xlabel('x')
     ax.set_ylabel('y')
@@ -126,3 +127,4 @@ with st.expander("🔍 보기 명제 완벽 해설 및 수식 풀이 보기"):
     st.markdown("---")
     st.markdown("### 🎯 최종 정답 구하기")
     st.latex(r"A + B + C = 100 + 10 + 0 = 110")
+    
