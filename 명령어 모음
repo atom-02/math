@@ -1,0 +1,16 @@
+가상환경 활성화
+venv\Scripts\activate
+
+스트림 실행
+streamlit run roots_app.py
+
+깃허브에 push
+git add 파일명.py
+git commit -m "add 문제설명"
+git push
+
+
+
+
+
+
