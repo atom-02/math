@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 수학 튜터 (Math Solver AI Tutor)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        
+        .kids-font {
+            font-family: 'Gaegu', sans-serif;
+        }
+
+        .skeleton-wave {
+            background: linear-gradient(120deg, #e2e8f0 30%, #f1f5f9 38%, #f1f5f9 40%, #e2e8f0 48%);
+            background-size: 200% 100%;
+            animation: wave 1.5s infinite ease-out;
+        }
+
+        @keyframes wave {
+            100% {
+                background-position: -200% 0;
+            }
+        }
+
+        .modal-fade-in {
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 250px;
+            max-height: 250px;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col selection:bg-emerald-100 selection:text-emerald-900">
+
+    <!-- Chosen Palette: Emerald & Mint Nature (bg-slate-50, text-slate-800, emerald-600, teal-500, mint accents) -->
+    
+    <!-- Application Structure Plan: 
+         - 이 웹 앱은 아동 친화적이고 직관적인 학습 흐름을 보장하기 위해 상단 듀얼 탭(문제 풀기, 기록장) 디자인을 채택했습니다.
+         - '문제 풀기' 탭은 [사진 촬영/업로드 -> AI OCR 텍스트 자동 인식 -> 자유 수정 영역 -> 단계별 친근한 해결 방법 제공 -> 유사 문제 및 이력 저장 연계]의 유기적인 싱글 페이지 터치형 깔끔한 플로우를 제안합니다.
+         - '기록장' 탭은 학습 성취도를 시각화하는 Chart.js 기반 주간 활동 그래프와 오답 노트를 일목요연하게 탐색하고 손쉽게 삭제할 수 있는 관리 대시보드로 구조화하여 피드백 효과를 극대화합니다.
+    -->
+    
+    <!-- Visualization & Content Choices:
+         - OCR 및 단계별 풀이: Gemini 2.5 Flash를 사용하여 텍스트와 이미지를 복합 분석하고 완결성 높은 JSON 구조를 파싱하여 친숙한 어투의 UI 단계별 카드 및 정답 박스를 빌드합니다.
+         - 오답 노트 차트: Chart.js를 사용하며 최신 UI 규칙에 따른 Canvas 사이즈 제한 기법을 적용, 7일간의 학습 빈도를 한눈에 트래킹합니다.
+         - 저장 시스템: Firestore의 개인별 프라이빗 서브 컬렉션 규칙을 따라 동기화하며, 익명 로그인 절차가 완료된 직후 실시간 관측(onSnapshot)을 바인딩합니다.
+    -->
+
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <header class="bg-white border-b border-emerald-100/80 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between py-2 sm:py-0">
+            <div class="flex items-center space-x-2 py-3">
+                <span class="text-3xl">&#127893;</span>
+                <div>
+                    <h1 class="font-bold text-lg text-emerald-800 tracking-tight flex items-center gap-1">
+                        초등 AI 수학 튜터 <span class="bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded-full font-black">선생님</span>
+                    </h1>
+                    <p class="text-[11px] text-slate-400">사진만 찍으면 명쾌하게 풀리는 수학 마법!</p>
+                </div>
+            </div>
+            
+            <nav class="flex w-full sm:w-auto border-t sm:border-t-0 border-slate-100">
+                <button id="tab-solve" class="flex-1 sm:flex-none px-6 py-4 border-b-4 border-emerald-600 text-emerald-600 font-bold text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all">
+                    <span>&#128221;</span> 문제 풀기
+                </button>
+                <button id="tab-history" class="flex-1 sm:flex-none px-6 py-4 border-b-4 border-transparent text-slate-500 hover:text-slate-800 font-medium text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all">
+                    <span>&#128212;</span> 나의 기록장
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-4xl w-full mx-auto px-4 py-6">
+        
+        <section id="sect-solve" class="space-y-6 block">
+            
+            <div class="bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-md relative overflow-hidden">
+                <div class="relative z-10">
+                    <span class="bg-white/20 text-white text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Smart AI Tutor</span>
+                    <h2 class="kids-font text-2xl md:text-3xl font-bold mt-2 mb-1">궁금한 수학 문제를 찍어봐요!</h2>
+                    <p class="text-xs md:text-sm text-emerald-50/95 leading-relaxed">카메라로 수학 문제를 비추거나 갤러리에서 불러오면 친절한 AI 선생님이 단계별로 풀이해 줍니다.</p>
+                </div>
+                <div class="absolute right-4 bottom-[-10px] text-8xl opacity-15 pointer-events-none select-none">&#129489;&#8205;&#127891;</div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <button id="btn-trigger-camera" class="bg-emerald-50 hover:bg-emerald-100/80 active:scale-[0.98] text-emerald-700 font-bold py-4 px-4 rounded-xl border border-emerald-200/60 flex flex-col items-center justify-center gap-2 transition-all">
+                        <span class="text-3xl">&#128248;</span>
+                        <span class="text-sm">사진 찍기</span>
+                    </button>
+                    <button id="btn-trigger-gallery" class="bg-teal-50 hover:bg-teal-100/80 active:scale-[0.98] text-teal-700 font-bold py-4 px-4 rounded-xl border border-teal-200/60 flex flex-col items-center justify-center gap-2 transition-all">
+                        <span class="text-3xl">&#128444;</span>
+                        <span class="text-sm">갤러리에서 찾기</span>
+                    </button>
+                </div>
+
+                <input type="file" id="input-camera" accept="image/*" capture="environment" class="hidden">
+                <input type="file" id="input-gallery" accept="image/*" class="hidden">
+
+                <div id="preview-box" class="hidden relative rounded-xl border border-slate-200 bg-slate-100 overflow-hidden aspect-video max-h-64 flex items-center justify-center">
+                    <img id="preview-img" class="w-full h-full object-contain" alt="선택한 수학 문제 이미지">
+                    
+                    <div id="ocr-loader" class="hidden absolute inset-0 bg-white/90 flex flex-col items-center justify-center space-y-4">
+                        <div class="w-16 h-16 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin"></div>
+                        <div class="text-center space-y-1">
+                            <h4 class="font-bold text-emerald-800 text-sm">마법 돋보기로 문제를 읽는 중...</h4>
+                            <p class="text-xs text-slate-400 animate-pulse">조금만 기다려주세요!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="ocr-edit-area" class="hidden space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label for="textarea-problem" class="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                            <span>&#128065;</span> 인식된 수학 문제 내용
+                        </label>
+                        <span class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">문제가 정확한지 확인 후 수정해보세요</span>
+                    </div>
+                    <textarea id="textarea-problem" rows="3" class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 text-slate-800 text-sm font-medium resize-none placeholder-slate-300"></textarea>
+                    
+                    <button id="btn-call-teacher" class="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold py-3.5 px-4 rounded-xl shadow-md shadow-emerald-700/10 active:scale-[0.99] transition-all flex items-center justify-center gap-2">
+                        <span class="text-lg">&#129489;&#8205;&#127891;</span>
+                        <span>풀이 선생님 부르기</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="solution-board" class="hidden bg-white rounded-2xl border border-emerald-100 shadow-sm overflow-hidden transition-all duration-300">
+                <div class="bg-gradient-to-r from-emerald-50 to-teal-50/50 px-5 py-4 border-b border-emerald-100 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-2xl">&#127926;</span>
+                        <h3 class="font-bold text-emerald-900 kids-font text-xl">풀이 선생님의 마법 지도서</h3>
+                    </div>
+                    <span class="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-full">해결 완료!</span>
+                </div>
+
+                <div id="steps-container" class="p-5 space-y-4">
+                </div>
+
+                <div class="mx-5 p-5 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 rounded-2xl border border-emerald-500/10 flex flex-col items-center justify-center text-center space-y-1">
+                    <span class="text-xs font-bold text-emerald-800/80 uppercase tracking-wide">⭐ 최종 정답 ⭐</span>
+                    <div id="final-answer-text" class="text-3xl font-black text-emerald-700 tracking-tight kids-font"></div>
+                    <button id="btn-tts-answer" class="mt-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold py-1.5 px-3 rounded-full border border-emerald-200 flex items-center gap-1 active:scale-95 transition-all">
+                        <span>🔊 ✨ 정답 음성 듣기</span>
+                    </button>
+                </div>
+
+                <div class="mx-5 mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200/60">
+                    <h4 class="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5 mb-3">
+                        <span>💬 ✨</span> 선생님께 더 물어보기 (꼬리 질문)
+                    </h4>
+                    <div id="followup-chat-box" class="space-y-3 mb-4 max-h-60 overflow-y-auto hidden text-xs sm:text-sm"></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="input-followup" placeholder="예: '왜 2단계에서 저 숫자를 더했나요?'" class="flex-1 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs sm:text-sm">
+                        <button id="btn-send-followup" class="bg-teal-600 hover:bg-teal-500 text-white font-bold px-4 py-3 rounded-xl text-xs sm:text-sm transition-all shrink-0 active:scale-95">✨ 질문하기</button>
+                    </div>
+                </div>
+
+                <div class="p-5 flex flex-col sm:flex-row items-center gap-3">
+                    <button id="btn-save-record" class="w-full sm:w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 text-sm">
+                        <span>💾</span> 기록장에 풀이 저장하기
+                    </button>
+                    <button id="btn-similar-problem" class="w-full sm:w-1/2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm shadow-emerald-800/15">
+                        <span>🔄</span> 비슷한 문제 더 풀어보기
+                    </button>
+                </div>
+            </div>
+
+        </section>
+
+        <section id="sect-history" class="space-y-6 hidden">
+            
+            <div class="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm space-y-5">
+                <div>
+                    <h2 class="font-bold text-lg text-slate-800 flex items-center gap-1.5">
+                        <span>&#128200;</span> 나의 수학 공부 기록 그래프
+                    </h2>
+                    <p class="text-xs text-slate-400">최근 일주일 동안 배운 문제들의 활성량을 모니터링합니다.</p>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="weekly-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div class="flex items-center justify-between px-1">
+                    <h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <span>&#128453;</span> 누적 학습 카드 피드
+                    </h3>
+                    <span id="history-count" class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">카드 0개</span>
+                </div>
+
+                <div id="history-cards-box" class="space-y-4">
+                </div>
+
+                <div id="history-empty-state" class="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center space-y-3 hidden">
+                    <span class="text-5xl">&#128213;</span>
+                    <div>
+                        <h4 class="font-bold text-slate-700">기록장이 깨끗해요!</h4>
+                        <p class="text-xs text-slate-400 mt-1">풀이 완료된 문제를 기록장에 보관해보세요.</p>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <div id="custom-toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center space-x-2 bg-slate-900/95 text-white text-xs sm:text-sm font-semibold px-4 py-3 rounded-full shadow-lg opacity-0 pointer-events-none transition-all duration-300">
+        <span id="toast-icon">✨</span>
+        <span id="toast-msg">작업 완료</span>
+    </div>
+
+    <div id="custom-confirm-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-100 modal-fade-in flex flex-col items-center text-center">
+            <span class="text-4xl mb-2">🗑️</span>
+            <h4 class="font-bold text-slate-800 text-base">정말 이 기록을 지울까요?</h4>
+            <p class="text-xs text-slate-400 mt-1 mb-5">삭제된 풀이 학습 카드는 되돌릴 수 없어요.</p>
+            <div class="flex space-x-3 w-full">
+                <button id="btn-confirm-cancel" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl text-xs transition-colors">취소</button>
+                <button id="btn-confirm-delete" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 rounded-xl text-xs shadow-sm shadow-red-200 transition-colors">지우기</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "dummy-key",
+            authDomain: "dummy.firebaseapp.com",
+            projectId: "dummy-project",
+            storageBucket: "dummy.appspot.com",
+            messagingSenderId: "123456",
+            appId: "1:123456:web:123"
+        };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'math-tutor-app';
+        const apiKey = "";
+
+        const state = {
+            userId: null,
+            currentBase64: null,
+            detectedProblem: "",
+            solutionSteps: [],
+            finalAnswer: "",
+            historyList: [],
+            pendingDeleteId: null,
+            chatHistory: []
+        };
+
+        const UI = {
+            tabSolve: document.getElementById('tab-solve'),
+            tabHistory: document.getElementById('tab-history'),
+            sectSolve: document.getElementById('sect-solve'),
+            sectHistory: document.getElementById('sect-history'),
+            btnTriggerCamera: document.getElementById('btn-trigger-camera'),
+            btnTriggerGallery: document.getElementById('btn-trigger-gallery'),
+            inputCamera: document.getElementById('input-camera'),
+            inputGallery: document.getElementById('input-gallery'),
+            previewBox: document.getElementById('preview-box'),
+            previewImg: document.getElementById('preview-img'),
+            ocrLoader: document.getElementById('ocr-loader'),
+            ocrEditArea: document.getElementById('ocr-edit-area'),
+            textareaProblem: document.getElementById('textarea-problem'),
+            btnCallTeacher: document.getElementById('btn-call-teacher'),
+            solutionBoard: document.getElementById('solution-board'),
+            stepsContainer: document.getElementById('steps-container'),
+            finalAnswerText: document.getElementById('final-answer-text'),
+            btnTtsAnswer: document.getElementById('btn-tts-answer'),
+            followupChatBox: document.getElementById('followup-chat-box'),
+            inputFollowup: document.getElementById('input-followup'),
+            btnSendFollowup: document.getElementById('btn-send-followup'),
+            btnSaveRecord: document.getElementById('btn-save-record'),
+            btnSimilarProblem: document.getElementById('btn-similar-problem'),
+            historyCardsBox: document.getElementById('history-cards-box'),
+            historyEmptyState: document.getElementById('history-empty-state'),
+            historyCount: document.getElementById('history-count'),
+            customToast: document.getElementById('custom-toast'),
+            toastIcon: document.getElementById('toast-icon'),
+            toastMsg: document.getElementById('toast-msg'),
+            confirmModal: document.getElementById('custom-confirm-modal'),
+            btnConfirmCancel: document.getElementById('btn-confirm-cancel'),
+            btnConfirmDelete: document.getElementById('btn-confirm-delete')
+        };
+
+        let chartInstance = null;
+        let unsubscribeHistory = null;
+        let currentAudio = null;
+
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth failed, falling back anonymously", err);
+                try {
+                    await signInAnonymously(auth);
+                } catch (subErr) {
+                    toast("시스템 인증 실패. 게스트로 이용합니다.", "⚠️");
+                }
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                state.userId = user.uid;
+                bindHistoryListener();
+            } else {
+                state.userId = null;
+                if (unsubscribeHistory) unsubscribeHistory();
+            }
+        });
+
+        initAuth();
+
+        function bindHistoryListener() {
+            if (!state.userId) return;
+            const historyCollection = collection(db, 'artifacts', appId, 'users', state.userId, 'history');
+            unsubscribeHistory = onSnapshot(historyCollection, (snapshot) => {
+                const results = [];
+                snapshot.forEach((doc) => {
+                    results.push({ id: doc.id, ...doc.data() });
+                });
+                results.sort((a, b) => b.timestamp - a.timestamp);
+                state.historyList = results;
+                renderHistoryCards();
+                updateWeeklyChart();
+            }, (error) => {
+                console.error("Snapshot error:", error);
+                toast("기록 데이터를 안전하게 동기화하지 못했습니다.", "❌");
+            });
+        }
+
+        async function fetchWithExponentialBackoff(url, requestOptions, maxRetries = 5) {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, requestOptions);
+                    if (response.ok) {
+                        return await response.json();
+                    }
+                    throw new Error(`Response Status Error: ${response.status}`);
+                } catch (err) {
+                    if (i === maxRetries - 1) throw err;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        let toastTimeout = null;
+        function toast(message, icon = "✨") {
+            UI.toastIcon.innerHTML = icon;
+            UI.toastMsg.innerText = message;
+            UI.customToast.style.opacity = "1";
+            UI.customToast.style.pointerEvents = "auto";
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                UI.customToast.style.opacity = "0";
+                UI.customToast.style.pointerEvents = "none";
+            }, 3000);
+        }
+
+        UI.tabSolve.addEventListener('click', () => {
+            UI.tabSolve.className = "flex-1 sm:flex-none px-6 py-4 border-b-4 border-emerald-600 text-emerald-600 font-bold text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all";
+            UI.tabHistory.className = "flex-1 sm:flex-none px-6 py-4 border-b-4 border-transparent text-slate-500 hover:text-slate-800 font-medium text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all";
+            UI.sectSolve.classList.replace('hidden', 'block');
+            UI.sectHistory.classList.replace('block', 'hidden');
+        });
+
+        UI.tabHistory.addEventListener('click', () => {
+            UI.tabHistory.className = "flex-1 sm:flex-none px-6 py-4 border-b-4 border-emerald-600 text-emerald-600 font-bold text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all";
+            UI.tabSolve.className = "flex-1 sm:flex-none px-6 py-4 border-b-4 border-transparent text-slate-500 hover:text-slate-800 font-medium text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all";
+            UI.sectHistory.classList.replace('hidden', 'block');
+            UI.sectSolve.classList.replace('block', 'hidden');
+            updateWeeklyChart();
+        });
+
+        UI.btnTriggerCamera.addEventListener('click', () => UI.inputCamera.click());
+        UI.btnTriggerGallery.addEventListener('click', () => UI.inputGallery.click());
+
+        UI.inputCamera.addEventListener('change', processImageFile);
+        UI.inputGallery.addEventListener('change', processImageFile);
+
+        function processImageFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            UI.previewBox.classList.remove('hidden');
+            UI.ocrLoader.classList.remove('hidden');
+            UI.ocrEditArea.classList.add('hidden');
+            UI.solutionBoard.classList.add('hidden');
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxBound = 1024;
+
+                    if (width > maxBound || height > maxBound) {
+                        if (width > height) {
+                            height = Math.round((height * maxBound) / width);
+                            width = maxBound;
+                        } else {
+                            width = Math.round((width * maxBound) / height);
+                            height = maxBound;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const base64Data = canvas.toDataURL('image/jpeg', 0.85);
+                    state.currentBase64 = base64Data.split(',')[1];
+                    UI.previewImg.src = base64Data;
+                    
+                    requestOCR(state.currentBase64);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        async function requestOCR(base64Image) {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const queryPayload = {
+                contents: [{
+                    parts: [
+                        { text: "이 이미지 속에 포함된 수학 문제를 한글 텍스트로 정확히 추출해 주세요. 수학 기호나 수식이 깨지지 않게 깔끔하게 다듬어서 텍스트만 리턴하세요." },
+                        { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                    ]
+                }]
+            };
+
+            try {
+                const responseData = await fetchWithExponentialBackoff(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(queryPayload)
+                });
+                
+                const rawText = responseData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                state.detectedProblem = rawText.trim();
+                
+                UI.textareaProblem.value = state.detectedProblem;
+                UI.ocrLoader.classList.add('hidden');
+                UI.ocrEditArea.classList.remove('hidden');
+                toast("문제를 성공적으로 판독했습니다!");
+            } catch (err) {
+                console.error(err);
+                UI.ocrLoader.classList.add('hidden');
+                toast("이미지 속 수식을 추출하는 데 실패했습니다.", "❌");
+                UI.ocrEditArea.classList.remove('hidden');
+            }
+        }
+
+        UI.btnCallTeacher.addEventListener('click', async () => {
+            const currentText = UI.textareaProblem.value.trim();
+            if (!currentText) {
+                toast("풀어볼 문제를 입력하거나 업로드해 주세요.", "⚠️");
+                return;
+            }
+
+            UI.btnCallTeacher.disabled = true;
+            UI.btnCallTeacher.classList.add('opacity-70');
+            UI.btnCallTeacher.innerText = "⏳ 풀이 선생님이 수식을 고민 중...";
+
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const systemPrompt = "당신은 초등학생을 지도하는 매우 친절하고 상냥한 수학 학습지 선생님입니다. 문제를 해결할 때 다음 규칙을 절대적으로 준수하세요:\n1. 초등학교 저학년도 막힘 없이 이해할 수 있는 구어체 쉬운 표현(~해요, ~랍니다, ~를 해볼까요?)을 사용하세요.\n2. 풀이 과정을 '1단계:', '2단계:', '3단계:'와 같이 명확한 논리적 흐름으로 쪼개서 구성하세요.\n3. 각 단계는 아이들이 지루해하지 않도록 짧고 비유적인 예시를 들어주면 좋습니다.\n4. 마지막 줄에는 최종 정답을 명시해 주세요.";
+            
+            const requestPayload = {
+                contents: [{
+                    parts: [{ text: `다음 수학 문제를 친절하게 풀어줘: ${currentText}` }]
+                }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            steps: {
+                                type: "ARRAY",
+                                items: { type: "STRING" },
+                                description: "단계별 풀이 과정 설명 리스트 ('1단계: ...', '2단계: ...')"
+                            },
+                            answer: {
+                                type: "STRING",
+                                description: "크고 명확한 최종 정답 텍스트"
+                            }
+                        },
+                        required: ["steps", "answer"]
+                    }
+                }
+            };
+
+            try {
+                const responseData = await fetchWithExponentialBackoff(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestPayload)
+                });
+
+                const parsedResponse = JSON.parse(responseData.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+                
+                state.solutionSteps = parsedResponse.steps || [];
+                state.finalAnswer = parsedResponse.answer || "답을 구할 수 없음";
+                state.chatHistory = [];
+                UI.followupChatBox.innerHTML = "";
+                UI.followupChatBox.classList.add('hidden');
+                
+                renderSolutionBoard();
+                
+                UI.solutionBoard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (err) {
+                console.error(err);
+                toast("선생님을 소환하지 못했어요. 네트워크를 확인해주세요.", "❌");
+            } finally {
+                UI.btnCallTeacher.disabled = false;
+                UI.btnCallTeacher.classList.remove('opacity-70');
+                UI.btnCallTeacher.innerHTML = `<span class="text-lg">&#129489;&#8205;&#127891;</span><span>풀이 선생님 부르기</span>`;
+            }
+        });
+
+        function renderSolutionBoard() {
+            UI.stepsContainer.innerHTML = "";
+            
+            state.solutionSteps.forEach((step, idx) => {
+                const stepCard = document.createElement('div');
+                stepCard.className = "p-4 rounded-xl border border-emerald-100 bg-emerald-50/40 flex items-start gap-3 relative";
+                
+                const stepIcon = document.createElement('span');
+                stepIcon.className = "text-xl shrink-0";
+                
+                if (idx === 0) stepIcon.innerHTML = "➊";
+                else if (idx === 1) stepIcon.innerHTML = "➋";
+                else if (idx === 2) stepIcon.innerHTML = "➌";
+                else stepIcon.innerHTML = "➍";
+
+                const textWrapper = document.createElement('div');
+                textWrapper.className = "flex-1";
+
+                const stepText = document.createElement('p');
+                stepText.className = "text-sm text-slate-700 leading-relaxed font-medium";
+                stepText.innerText = step;
+
+                const ttsButton = document.createElement('button');
+                ttsButton.className = "mt-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-bold py-1 px-2.5 rounded-full flex items-center gap-1 transition-all active:scale-95";
+                ttsButton.innerHTML = "🔊 ✨ 목소리로 듣기";
+                ttsButton.addEventListener('click', () => {
+                    playVoiceTts(step);
+                });
+
+                textWrapper.appendChild(stepText);
+                textWrapper.appendChild(ttsButton);
+
+                stepCard.appendChild(stepIcon);
+                stepCard.appendChild(textWrapper);
+                UI.stepsContainer.appendChild(stepCard);
+            });
+
+            UI.finalAnswerText.innerText = state.finalAnswer;
+            UI.solutionBoard.classList.remove('hidden');
+        }
+
+        UI.btnTtsAnswer.addEventListener('click', () => {
+            playVoiceTts(`정답은 ${state.finalAnswer} 입니다! 참 잘했어요!`);
+        });
+
+        async function playVoiceTts(text) {
+            if (currentAudio) {
+                currentAudio.pause();
+            }
+
+            toast("목소리를 준비하고 있어요...", "✨");
+
+            const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{
+                    parts: [{ text: `Say cheerfully: ${text}` }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: {
+                                voiceName: "Kore"
+                            }
+                        }
+                    }
+                }
+            };
+
+            try {
+                const response = await fetchWithExponentialBackoff(ttsUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const rawBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                const mimeType = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || "";
+                
+                let rate = 24000;
+                const rateMatch = mimeType.match(/rate=(\d+)/);
+                if (rateMatch) {
+                    rate = parseInt(rateMatch[1], 10);
+                }
+
+                if (rawBase64) {
+                    const wavUrl = pcmToWav(rawBase64, rate);
+                    currentAudio = new Audio(wavUrl);
+                    currentAudio.play();
+                    toast("설명을 소리로 들려드릴게요!", "🔊");
+                } else {
+                    toast("목소리를 만들지 못했어요.", "❌");
+                }
+            } catch (err) {
+                console.error(err);
+                toast("TTS 재생 도중 오류 발생", "❌");
+            }
+        }
+
+        function pcmToWav(base64Data, sampleRate) {
+            const binaryString = atob(base64Data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const buffer = bytes.buffer;
+            const view = new DataView(buffer);
+            
+            const wavBuffer = new ArrayBuffer(44 + buffer.byteLength);
+            const wavView = new DataView(wavBuffer);
+            
+            wavView.setUint32(0, 0x52494646, false);
+            wavView.setUint32(4, 36 + buffer.byteLength, true);
+            wavView.setUint32(8, 0x57415645, false);
+            wavView.setUint32(12, 0x666d7420, false);
+            wavView.setUint32(16, 16, true);
+            wavView.setUint16(20, 1, true);
+            wavView.setUint16(22, 1, true);
+            wavView.setUint32(24, sampleRate, true);
+            wavView.setUint32(28, sampleRate * 2, true);
+            wavView.setUint16(32, 2, true);
+            wavView.setUint16(34, 16, true);
+            wavView.setUint32(36, 0x64617461, false);
+            wavView.setUint32(40, buffer.byteLength, true);
+            
+            for (let i = 0; i < buffer.byteLength; i++) {
+                wavView.setUint8(44 + i, view.getUint8(i));
+            }
+            
+            const blob = new Blob([wavView], { type: 'audio/wav' });
+            return URL.createObjectURL(blob);
+        }
+
+        UI.btnSendFollowup.addEventListener('click', async () => {
+            const followupText = UI.inputFollowup.value.trim();
+            if (!followupText) return;
+
+            UI.btnSendFollowup.disabled = true;
+            UI.btnSendFollowup.innerText = "⏳ 고민 중...";
+
+            const userMessageDiv = document.createElement('div');
+            userMessageDiv.className = "p-3 rounded-lg bg-emerald-100 text-emerald-900 self-end max-w-[85%] ml-auto mb-2 font-medium";
+            userMessageDiv.innerText = `나: ${followupText}`;
+            UI.followupChatBox.appendChild(userMessageDiv);
+            UI.followupChatBox.classList.remove('hidden');
+            UI.followupChatBox.scrollTop = UI.followupChatBox.scrollHeight;
+
+            UI.inputFollowup.value = "";
+
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            const contextPrompt = `수학 문제: ${UI.textareaProblem.value}\n선생님 풀이 과정: ${state.solutionSteps.join('\n')}\n학생의 추가 질문: ${followupText}\n\n위 수학 문제 맥락을 기반으로 초등학생 눈높이에 맞춰서 '한글 구어체'로 친절하게 설명해 주세요. 부연설명은 3줄 이내로 명확하게 답변해줘.`;
+
+            try {
+                const responseData = await fetchWithExponentialBackoff(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: contextPrompt }] }]
+                    })
+                });
+
+                const reply = responseData.candidates?.[0]?.content?.parts?.[0]?.text || "미안해, 다시 한 번만 물어봐줄래?";
+
+                const teacherMessageDiv = document.createElement('div');
+                teacherMessageDiv.className = "p-3 rounded-lg bg-slate-100 text-slate-800 mr-auto max-w-[85%] mb-2 leading-relaxed";
+                teacherMessageDiv.innerHTML = `<strong>👩‍🏫 선생님:</strong> ${reply}`;
+                
+                const miniTtsButton = document.createElement('button');
+                miniTtsButton.className = "mt-1.5 block bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold py-0.5 px-2 rounded-full";
+                miniTtsButton.innerText = "🔊 음성으로 듣기";
+                miniTtsButton.addEventListener('click', () => {
+                    playVoiceTts(reply);
+                });
+                
+                teacherMessageDiv.appendChild(miniTtsButton);
+                UI.followupChatBox.appendChild(teacherMessageDiv);
+                UI.followupChatBox.scrollTop = UI.followupChatBox.scrollHeight;
+            } catch (err) {
+                console.error(err);
+                toast("답변 생성 도중 에러가 발생했어요.", "❌");
+            } finally {
+                UI.btnSendFollowup.disabled = false;
+                UI.btnSendFollowup.innerText = "✨ 질문하기";
+            }
+        });
+
+        UI.btnSimilarProblem.addEventListener('click', async () => {
+            const baseText = UI.textareaProblem.value.trim();
+            if (!baseText) return;
+
+            UI.btnSimilarProblem.disabled = true;
+            UI.btnSimilarProblem.innerText = "🔄 비슷한 문제 작당 중...";
+
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const requestPayload = {
+                contents: [{
+                    parts: [{ text: `다음 수학 문제와 개념 구조, 해결 공식 수준은 완전히 똑같지만 숫자 및 세부 스토리를 변경한 새로운 비슷한 초등학생용 문제를 제작하세요. 텍스트로만 심플하게 리턴해 주세요:\n\n${baseText}` }]
+                }]
+            };
+
+            try {
+                const responseData = await fetchWithExponentialBackoff(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestPayload)
+                });
+
+                const rawText = responseData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                
+                state.detectedProblem = rawText.trim();
+                UI.textareaProblem.value = state.detectedProblem;
+                
+                state.currentBase64 = null;
+                UI.previewBox.classList.add('hidden');
+                UI.solutionBoard.classList.add('hidden');
+
+                toast("개념은 유지하고 숫자를 바꾼 새 문제를 출제했습니다!");
+                UI.ocrEditArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (err) {
+                console.error(err);
+                toast("유사 문제를 만들지 못했습니다.", "❌");
+            } finally {
+                UI.btnSimilarProblem.disabled = false;
+                UI.btnSimilarProblem.innerHTML = `<span>🔄</span><span>비슷한 문제 더 풀어보기</span>`;
+            }
+        });
+
+        UI.btnSaveRecord.addEventListener('click', async () => {
+            if (!state.userId) {
+                toast("인증 준비가 완료되지 않았습니다.", "⚠️");
+                return;
+            }
+
+            UI.btnSaveRecord.disabled = true;
+            UI.btnSaveRecord.innerText = "⏳ 저장 처리 중...";
+
+            const documentId = Date.now().toString();
+            const recordDocRef = doc(db, 'artifacts', appId, 'users', state.userId, 'history', documentId);
+
+            const payloadData = {
+                id: documentId,
+                problem: UI.textareaProblem.value.trim(),
+                steps: state.solutionSteps,
+                answer: state.finalAnswer,
+                image: state.currentBase64,
+                timestamp: Date.now()
+            };
+
+            try {
+                await setDoc(recordDocRef, payloadData);
+                toast("오답 노트(기록장)에 안전하게 추가되었습니다!", "💾");
+            } catch (err) {
+                console.error(err);
+                toast("클라우드 저장 실패", "❌");
+            } finally {
+                UI.btnSaveRecord.disabled = false;
+                UI.btnSaveRecord.innerHTML = `<span>💾</span><span>기록장에 풀이 저장하기</span>`;
+            }
+        });
+
+        function renderHistoryCards() {
+            UI.historyCardsBox.innerHTML = "";
+            UI.historyCount.innerText = `카드 ${state.historyList.length}개`;
+
+            if (state.historyList.length === 0) {
+                UI.historyEmptyState.classList.remove('hidden');
+                return;
+            }
+            UI.historyEmptyState.classList.add('hidden');
+
+            state.historyList.forEach((cardData) => {
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-2xl border border-slate-200/60 shadow-sm p-4 relative group hover:border-emerald-200 transition-all";
+
+                const dateObj = new Date(cardData.timestamp);
+                const dateString = `${dateObj.getFullYear()}.${String(dateObj.getMonth() + 1).padStart(2, '0')}.${String(dateObj.getDate()).padStart(2, '0')} ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+
+                let imageAreaHtml = "";
+                if (cardData.image) {
+                    imageAreaHtml = `
+                        <div class="w-full md:w-36 aspect-video md:aspect-square bg-slate-50 border border-slate-100 rounded-xl overflow-hidden shrink-0 flex items-center justify-center p-1 bg-slate-100/50">
+                            <img src="data:image/jpeg;base64,${cardData.image}" class="w-full h-full object-contain rounded-lg" alt="학습 문제 스냅샷">
+                        </div>
+                    `;
+                }
+
+                const stepsSummaryHtml = (cardData.steps || []).map((step, idx) => {
+                    return `
+                        <div class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100/60 leading-relaxed">
+                            <span class="font-bold text-emerald-600">${idx + 1}단계.</span> ${step}
+                        </div>
+                    `;
+                }).join('');
+
+                card.innerHTML = `
+                    <div class="flex flex-col md:flex-row gap-4">
+                        ${imageAreaHtml}
+                        <div class="flex-grow flex flex-col justify-between">
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[10px] font-bold text-slate-400">${dateString}</span>
+                                    <button class="btn-trash text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all" data-id="${cardData.id}">
+                                        🗑️
+                                    </button>
+                                </div>
+                                <h4 class="font-bold text-slate-800 text-sm md:text-base leading-snug line-clamp-2">${cardData.problem}</h4>
+                                <div class="space-y-1 pt-1.5 border-t border-dashed border-slate-100">
+                                    ${stepsSummaryHtml}
+                                </div>
+                            </div>
+                            <div class="text-right pt-3">
+                                <span class="text-xs text-slate-400 font-bold mr-1.5">정답:</span>
+                                <span class="text-sm md:text-base font-black text-emerald-600 kids-font">${cardData.answer}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const trashBtn = card.querySelector('.btn-trash');
+                trashBtn.addEventListener('click', (e) => {
+                    state.pendingDeleteId = e.currentTarget.getAttribute('data-id');
+                    UI.confirmModal.classList.remove('hidden');
+                });
+
+                UI.historyCardsBox.appendChild(card);
+            });
+        }
+
+        UI.btnConfirmCancel.addEventListener('click', () => {
+            state.pendingDeleteId = null;
+            UI.confirmModal.classList.add('hidden');
+        });
+
+        UI.btnConfirmDelete.addEventListener('click', async () => {
+            if (!state.pendingDeleteId || !state.userId) return;
+
+            try {
+                const targetRef = doc(db, 'artifacts', appId, 'users', state.userId, 'history', state.pendingDeleteId);
+                await deleteDoc(targetRef);
+                toast("성공적으로 기록을 지웠습니다.", "🗑️");
+            } catch (err) {
+                console.error(err);
+                toast("기록을 지우지 못했습니다.", "❌");
+            } finally {
+                state.pendingDeleteId = null;
+                UI.confirmModal.classList.add('hidden');
+            }
+        });
+
+        function updateWeeklyChart() {
+            const canvasElement = document.getElementById('weekly-chart');
+            if (!canvasElement) return;
+
+            const ctx = canvasElement.getContext('2d');
+
+            const daysRange = [];
+            const solveCounts = {};
+
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const rawFormat = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                const displayFormat = `${d.getMonth() + 1}/${d.getDate()}`;
+                
+                daysRange.push({ raw: rawFormat, label: displayFormat });
+                solveCounts[rawFormat] = 0;
+            }
+
+            state.historyList.forEach((record) => {
+                const recordDate = new Date(record.timestamp);
+                const format = `${recordDate.getFullYear()}-${String(recordDate.getMonth() + 1).padStart(2, '0')}-${String(recordDate.getDate()).padStart(2, '0')}`;
+                if (solveCounts[format] !== undefined) {
+                    solveCounts[format]++;
+                }
+            });
+
+            const labels = daysRange.map(item => item.label);
+            const chartData = daysRange.map(item => solveCounts[item.raw]);
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '공부한 문제수 (개)',
+                        data: chartData,
+                        backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                        hoverBackgroundColor: 'rgba(5, 150, 105, 0.9)',
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 1.5,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                font: { size: 10 }
+                            },
+                            grid: { color: '#f1f5f9' }
+                        },
+                        x: {
+                            ticks: { font: { size: 11, weight: 'bold' } },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
