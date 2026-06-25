@@ -64,14 +64,19 @@
                 </div>
             </div>
             
-            <nav class="flex w-full sm:w-auto border-t sm:border-t-0 border-slate-100">
-                <button id="tab-solve" class="flex-1 sm:flex-none px-6 py-4 border-b-4 border-emerald-700 text-emerald-800 font-bold text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all">
-                    <span>📝</span> 분석 및 풀이
+            <div class="flex items-center space-x-2 w-full sm:w-auto justify-between sm:justify-end">
+                <nav class="flex border-t sm:border-t-0 border-slate-100">
+                    <button id="tab-solve" class="flex-1 sm:flex-none px-4 py-4 border-b-4 border-emerald-700 text-emerald-800 font-bold text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all">
+                        <span>📝</span> 분석 및 풀이
+                    </button>
+                    <button id="tab-history" class="flex-1 sm:flex-none px-4 py-4 border-b-4 border-transparent text-slate-500 hover:text-slate-800 font-medium text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all">
+                        <span>📊</span> 개인 오답노트
+                    </button>
+                </nav>
+                <button id="btn-settings" class="p-2 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-all" title="API 설정">
+                    <span class="text-xl">⚙️</span>
                 </button>
-                <button id="tab-history" class="flex-1 sm:flex-none px-6 py-4 border-b-4 border-transparent text-slate-500 hover:text-slate-800 font-medium text-sm sm:text-base flex items-center justify-center gap-1.5 transition-all">
-                    <span>📊</span> 개인 오답노트
-                </button>
-            </nav>
+            </div>
         </div>
     </header>
 
@@ -213,6 +218,26 @@
 
     </main>
 
+    <div id="settings-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-100 modal-fade-in flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h4 class="font-bold text-slate-800 text-base">Gemini API 설정</h4>
+                <button id="btn-close-settings" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+            </div>
+            <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+                자동 환경에서 API Key 주입이 안되거나 외부 독립 구동 시 본인의 Gemini API Key를 입력하여 원활하게 사용하실 수 있습니다. 키값은 컴퓨터 로컬 공간에만 보관됩니다.
+            </p>
+            <div class="space-y-3 mb-5">
+                <label for="input-api-key" class="text-xs font-bold text-slate-600 block">Gemini API Key</label>
+                <input type="password" id="input-api-key" placeholder="AIzaSy..." class="w-full p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm">
+            </div>
+            <div class="flex space-x-3">
+                <button id="btn-save-settings" class="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-xl text-xs shadow-sm transition-colors">저장하기</button>
+                <button id="btn-clear-settings" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 px-4 rounded-xl text-xs transition-colors">초기화</button>
+            </div>
+        </div>
+    </div>
+
     <div id="custom-toast" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center space-x-2 bg-slate-900/95 text-white text-xs sm:text-sm font-semibold px-4 py-3 rounded-lg shadow-lg opacity-0 pointer-events-none transition-all duration-300">
         <span id="toast-icon">✨</span>
         <span id="toast-msg">시스템 메시지</span>
@@ -292,12 +317,22 @@
             toastMsg: document.getElementById('toast-msg'),
             confirmModal: document.getElementById('custom-confirm-modal'),
             btnConfirmCancel: document.getElementById('btn-confirm-cancel'),
-            btnConfirmDelete: document.getElementById('btn-confirm-delete')
+            btnConfirmDelete: document.getElementById('btn-confirm-delete'),
+            btnSettings: document.getElementById('btn-settings'),
+            settingsModal: document.getElementById('settings-modal'),
+            btnCloseSettings: document.getElementById('btn-close-settings'),
+            inputApiKey: document.getElementById('input-api-key'),
+            btnSaveSettings: document.getElementById('btn-save-settings'),
+            btnClearSettings: document.getElementById('btn-clear-settings')
         };
 
         let chartInstance = null;
         let unsubscribeHistory = null;
         let currentAudio = null;
+
+        const getActiveApiKey = () => {
+            return apiKey || localStorage.getItem('user_gemini_api_key') || "";
+        };
 
         const initAuth = async () => {
             try {
@@ -354,7 +389,14 @@
                     if (response.ok) {
                         return await response.json();
                     }
-                    throw new Error(`Response Status Error: ${response.status}`);
+                    let errorMsg = `HTTP ${response.status}`;
+                    try {
+                        const errJson = await response.json();
+                        if (errJson.error && errJson.error.message) {
+                            errorMsg = errJson.error.message;
+                        }
+                    } catch (e) {}
+                    throw new Error(errorMsg);
                 } catch (err) {
                     if (i === maxRetries - 1) throw err;
                     await new Promise(resolve => setTimeout(resolve, delay));
@@ -389,6 +431,34 @@
             UI.sectHistory.classList.replace('hidden', 'block');
             UI.sectSolve.classList.replace('block', 'hidden');
             updateWeeklyChart();
+        });
+
+        UI.btnSettings.addEventListener('click', () => {
+            UI.inputApiKey.value = localStorage.getItem('user_gemini_api_key') || "";
+            UI.settingsModal.classList.remove('hidden');
+        });
+
+        UI.btnCloseSettings.addEventListener('click', () => {
+            UI.settingsModal.classList.add('hidden');
+        });
+
+        UI.btnSaveSettings.addEventListener('click', () => {
+            const keyVal = UI.inputApiKey.value.trim();
+            if (keyVal) {
+                localStorage.setItem('user_gemini_api_key', keyVal);
+                toast("API Key가 저장되었습니다.");
+            } else {
+                localStorage.removeItem('user_gemini_api_key');
+                toast("API Key가 삭제되었습니다.");
+            }
+            UI.settingsModal.classList.add('hidden');
+        });
+
+        UI.btnClearSettings.addEventListener('click', () => {
+            localStorage.removeItem('user_gemini_api_key');
+            UI.inputApiKey.value = "";
+            toast("설정이 초기화되었습니다.");
+            UI.settingsModal.classList.add('hidden');
         });
 
         UI.btnTriggerCamera.addEventListener('click', () => UI.inputCamera.click());
@@ -442,13 +512,22 @@
         }
 
         async function requestOCR(base64Image) {
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const activeKey = getActiveApiKey();
+            if (!activeKey) {
+                UI.ocrLoader.classList.add('hidden');
+                toast("API Key가 필요합니다. 우측 상단 ⚙️ 설정을 클릭해 설정해주세요.", "⚠️");
+                UI.inputApiKey.value = "";
+                UI.settingsModal.classList.remove('hidden');
+                return;
+            }
+
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`;
             const queryPayload = {
                 contents: [{
                     role: "user",
                     parts: [
-                        { text: "이 이미지 속에 포함된 고등학교 수학 문제를 정확히 한글 텍스트로 추출해 주세요. 분수, 제곱근(루트), 지수, 로그, 삼각함수, 미적분 기호 등 복잡한 수식이 손실되지 않도록 직관적인 텍스트 또는 표준적인 LaTeX 수식 기호($...$)로 완전히 복구해야 합니다. 문제에 무관한 배경 노이즈나 워터마크는 무시하고 오직 문항 발문과 선택지 텍스트만 리턴하십시오." },
-                        { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                        { inlineData: { mimeType: "image/jpeg", data: base64Image } },
+                        { text: "이 이미지 속에 포함된 고등학교 수학 문제를 정확히 한글 텍스트로 추출해 주세요. 분수, 제곱근(루트), 지수, 로그, 삼각함수, 미적분 기호 등 복잡한 수식이 손실되지 않도록 직관적인 텍스트 또는 표준적인 LaTeX 수식 기호($...$)로 완전히 복구해야 합니다. 문제에 무관한 배경 노이즈나 워터마크는 무시하고 오직 문항 발문과 선택지 텍스트만 리턴하십시오." }
                     ]
                 }]
             };
@@ -470,7 +549,7 @@
             } catch (err) {
                 console.error(err);
                 UI.ocrLoader.classList.add('hidden');
-                toast("수식 정합에 실패했습니다.", "❌");
+                toast(`수식 분석 실패: ${err.message}`, "❌");
                 UI.ocrEditArea.classList.remove('hidden');
             }
         }
@@ -482,11 +561,18 @@
                 return;
             }
 
+            const activeKey = getActiveApiKey();
+            if (!activeKey) {
+                toast("API Key가 설정되어 있지 않습니다.", "⚠️");
+                UI.settingsModal.classList.remove('hidden');
+                return;
+            }
+
             UI.btnCallTeacher.disabled = true;
             UI.btnCallTeacher.classList.add('opacity-70');
             UI.btnCallTeacher.innerText = "⏳ 고교 과정 수학 해법 해석 중...";
 
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`;
             const systemPrompt = "당신은 고등학교 수학(수학 I, 수학 II, 미적분, 확률과 통계, 기하) 및 수능 수학 영역을 가르치는 심도 깊고 명쾌한 일타강사 스타일의 전문 AI 튜터입니다. 문제를 해결할 때 다음 규칙을 철저히 준수하세요:\n1. 고등학생 대상에 어울리는 정돈되고 논리 정연한 학술적 문체를 사용하십시오.\n2. 문제 풀이를 '1단계: 핵심 원리 및 접근법 정의', '2단계: 수식 유도 및 증명/연산 과정', '3단계: 풀이 분석 및 핵심 고득점 Tip'과 같이 학업에 실질적 도움이 되도록 입체적으로 구성해 주세요.\n3. 풀이에 활용된 중요 공식이나 전제 조건을 수식 전개 내에 명확히 기술하십시오.\n4. 마지막 최종 정답은 반드시 수학적으로 명료하게 별도 기입해 주세요.";
             
             const requestPayload = {
@@ -537,7 +623,7 @@
                 UI.solutionBoard.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (err) {
                 console.error(err);
-                toast("문항 해법 도출에 오류가 발생했습니다.", "❌");
+                toast(`문항 풀이 오류: ${err.message}`, "❌");
             } finally {
                 UI.btnCallTeacher.disabled = false;
                 UI.btnCallTeacher.classList.remove('opacity-70');
@@ -595,9 +681,15 @@
                 currentAudio.pause();
             }
 
+            const activeKey = getActiveApiKey();
+            if (!activeKey) {
+                toast("API Key 구성이 누락되었습니다.", "⚠️");
+                return;
+            }
+
             toast("설명 보이스 생성 중...", "✨");
 
-            const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${activeKey}`;
             const payload = {
                 contents: [{
                     parts: [{ text: `Say in a calm, analytical tone: ${text}` }]
@@ -640,7 +732,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                toast("오디오 모듈 연동 실패", "❌");
+                toast(`오디오 모듈 연동 실패: ${err.message}`, "❌");
             }
         }
 
@@ -683,6 +775,12 @@
             const followupText = UI.inputFollowup.value.trim();
             if (!followupText) return;
 
+            const activeKey = getActiveApiKey();
+            if (!activeKey) {
+                toast("API Key 구성이 누락되었습니다.", "⚠️");
+                return;
+            }
+
             UI.btnSendFollowup.disabled = true;
             UI.btnSendFollowup.innerText = "⏳ 연산 중...";
 
@@ -695,7 +793,7 @@
 
             UI.inputFollowup.value = "";
 
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`;
             
             const contextPrompt = `수학 문제: ${UI.textareaProblem.value}\n선생님 풀이 과정: ${state.solutionSteps.join('\n')}\n학생의 심화 및 보충 질문: ${followupText}\n\n위 수학 문제 맥락 및 고교 수학 이론에 기반해 논리 비약 없이 친절하게 학술 서술형식으로 답변해 주세요. 대답은 정돈된 3줄 가량의 개조식 또는 줄글로 간결하고 깊이 있게 구성해 주십시오.`;
 
@@ -729,7 +827,7 @@
                 UI.followupChatBox.scrollTop = UI.followupChatBox.scrollHeight;
             } catch (err) {
                 console.error(err);
-                toast("답변 큐 수집 중 오류 발생", "❌");
+                toast(`질문 처리 오류: ${err.message}`, "❌");
             } finally {
                 UI.btnSendFollowup.disabled = false;
                 UI.btnSendFollowup.innerText = "질문 전송";
@@ -740,10 +838,16 @@
             const baseText = UI.textareaProblem.value.trim();
             if (!baseText) return;
 
+            const activeKey = getActiveApiKey();
+            if (!activeKey) {
+                toast("API Key 구성이 누락되었습니다.", "⚠️");
+                return;
+            }
+
             UI.btnSimilarProblem.disabled = true;
             UI.btnSimilarProblem.innerText = "🔄 변형 기출 합성 중...";
 
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeKey}`;
             const requestPayload = {
                 contents: [{
                     role: "user",
@@ -771,7 +875,7 @@
                 UI.ocrEditArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
             } catch (err) {
                 console.error(err);
-                toast("변형 문항 생성 쿼리 딜레이 초과", "❌");
+                toast(`변형 문항 생성 실패: ${err.message}`, "❌");
             } finally {
                 UI.btnSimilarProblem.disabled = false;
                 UI.btnSimilarProblem.innerHTML = `<span>🔄</span><span>비슷한 문제 더 풀어보기</span>`;
